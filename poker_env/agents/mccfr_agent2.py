@@ -1,16 +1,15 @@
-import numpy as np
 import os
-import pandas as pd
-import collections
 import copy
 import random
-import math
+#import math
 import pickle
 
-import poker_env.agents.mccfr_agent2_utils as utils
+import numpy as np
+import pandas as pd
 
 from poker_env.agents.base_agent import Agent
 from poker_env.ToyPoker.data.eval_potential import calc_final_potential
+import poker_env.ToyPoker.data.abs_tree as abs_tree
 
 # index of infoset
 ind_i = 1
@@ -22,8 +21,11 @@ neg_p_prob = 0.95
 
 T = 100
 
-first_round_table = pd.read_csv('poker_env/ToyPoker/data/toypoker_first_ehs_vector.csv', index_col=None)
-final_round_table = pd.read_csv('poker_env/ToyPoker/data/toypoker_final_ehs.csv', index_col=None)
+#first_round_table = pd.read_csv('poker_env/ToyPoker/data/toypoker_first_ehs_vector.csv', index_col='cards_str', low_memory = False)
+#final_round_table = pd.read_csv('poker_env/ToyPoker/data/toypoker_final_ehs.csv', index_col='cards_str', low_memory = False)
+
+file = open('poker_env/ToyPoker/data/abs_tree', 'rb')
+c_root = pickle.load(file)
 
 class PublicState:
 
@@ -57,7 +59,7 @@ class PublicState:
         for ps in self.next:
             ps.print_tree()
 
-    def search_infoset(self, state, action, env):
+    def search_infoset(self, cards, action, actionspace, done):
         '''
         First, search the next publicstate ps in self.next.
         Secondly, search infoset in ps.infoset.
@@ -69,10 +71,10 @@ class PublicState:
         Returns:
             (Infoset): the infoset corresponding to state
         '''
-        ps = self._search_publicstate(state, action, env)
-        return ps._search_infoset(state)
+        ps = self._search_publicstate(action, actionspace, done)
+        return ps._search_infoset(cards)
         
-    def _search_publicstate(self, state, action, env):
+    def _search_publicstate(self, action, actionspace, done):
         '''
         The first step in search_infoset
         '''
@@ -80,45 +82,38 @@ class PublicState:
         for ps in self.next:
             if ps.last_action == last_action:
                 return ps
-        actionspace = utils.action_abstraction(state)
-        done = env.is_over()
         ps = PublicState(last_action, actionspace, done)
         self.next.append(ps)
         return ps
         
-    def _search_infoset(self, state):
+    def _search_infoset(self, cards):
         '''
         The second step in search_infoset
         '''
-        #card = utils.card_abstraction(state)
-        card = encode_state(state)
         for ins in self.infoset:
-            if ins.card == card:
+            if ins.cards == cards:
                 return ins
-        ins = Infoset(card, self)
+        ins = Infoset(cards, self)
         self.infoset.append(ins)
         return ins
         
 class Infoset:
 
-    def __init__(self, card, publicstate):
+    def __init__(self, cards, publicstate):
     
         global ind_i
         self.name = "Infoset "+str(ind_i)
         ind_i += 1
         self.publicstate = publicstate
         if self.publicstate.done == False:
-            # self.param = copy.deepcopy(self.publicstate.actionspace)
-            self.param = [{'action': action} for action in self.publicstate.actionspace]
-            for a in self.param:
-                a['regret'] = 0
-                a['strategy'] = 1/len(self.publicstate.actionspace)
-        self.card = card
+            actionspace_size = len(self.publicstate.actionspace)
+            self.param = [{'action': action, 'regret': 0, 'strategy': 1/actionspace_size} for action in self.publicstate.actionspace]
+        self.cards = cards
         
     def disp(self):
         print(self.name)
         print("publicstate: ", self.publicstate.name)
-        print("card: ", self.card)
+        print("cards: ", self.cards)
         print("param: ", self.param)
         print()
     
@@ -137,32 +132,39 @@ class Infoset:
             return
         else:
             state = env.get_state()
-            cur_player = utils.get_player(state)
+            cur_player = state.player_id
+            
             if cur_player == player:
                 positive_regret = [a['regret'] for a in self.param]
-                for i,a in enumerate(self.param):
-                    if a['regret'] < 0:
+                for i,r in enumerate(positive_regret):
+                    if r < 0:
                         positive_regret[i] = 0
                 sum_regret = sum(positive_regret)
                 if sum_regret != 0:
                     for i,a in enumerate(self.param):
                         a['strategy'] = positive_regret[i]/sum_regret
                 else:
+                    actionspace_size = len(self.publicstate.actionspace)
                     for a in self.param:
-                        a['strategy'] = 1/len(self.publicstate.actionspace)
-                #if [a['regret'] for a in self.param] != [0]*len(self.param):
-                    #self.disp()
-                action = utils.sample_action(self.publicstate.actionspace, [a['strategy'] for a in self.param])
+                        a['strategy'] = 1/actionspace_size
+                       
+                action = sample_action(self.publicstate.actionspace, [a['strategy'] for a in self.param])
                 next_state, _ = env.step(action)
                 # the next node
-                next_infoset = self.publicstate.search_infoset(next_state, action, env)
+                cards = encode_state_tree(next_state)
+                done = env.is_over()
+                actionspace = next_state.legal_actions
+                next_infoset = self.publicstate.search_infoset(cards, action, actionspace, done)
                 next_infoset.update_strategy(player, env)
                 # the current node
             else:
                 for action in self.publicstate.actionspace:
                     next_state, _ = env.step(action)
                     # the next node
-                    next_infoset = self.publicstate.search_infoset(next_state, action, env)
+                    cards = encode_state_tree(next_state)
+                    done = env.is_over()
+                    actionspace = next_state.legal_actions
+                    next_infoset = self.publicstate.search_infoset(cards, action, actionspace, done)
                     next_infoset.update_strategy(player, env)
                     # the current node
             env.step_back()
@@ -178,7 +180,7 @@ class Infoset:
         Args:
             player(int)
             reward(float)
-            neg_p(Bool)
+            neg_p(Bool): whether use negative pruning
             discount(float)
             env(Env)
             
@@ -193,18 +195,19 @@ class Infoset:
         else:
             global neg_p_threshold
             state = env.get_state()
-            cur_player = utils.get_player(state)
-            # temp strategy
+            cur_player = state.player_id
+            # update temp strategy
             temp_param = copy.deepcopy(self.param)
-            sum_regret = sum([a['regret'] for a in self.param])
+            sum_regret = sum([a['regret'] for a in self.param]) # positive regret?
             if sum_regret != 0:
                 for a in temp_param:
                     a['strategy'] = a['regret']/sum_regret
             else:
+                actionspace_size = len(self.publicstate.actionspace)
                 for a in temp_param:
-                    a['strategy'] = 1/len(self.publicstate.actionspace)
+                    a['strategy'] = 1/actionspace_size
                     
-            v_I = 0            
+            v_I = 0
             if cur_player == player:
                 for i,a in enumerate(temp_param):
                     # negative pruning
@@ -215,7 +218,11 @@ class Infoset:
                             reward = env.get_payoffs()[player]
                         else:
                             reward = 0
-                        next_infoset = self.publicstate.search_infoset(next_state, self.publicstate.actionspace[i], env)
+                            
+                        cards = encode_state_tree(next_state)
+                        done = env.is_over()
+                        actionspace = next_state.legal_actions
+                        next_infoset = self.publicstate.search_infoset(cards, self.publicstate.actionspace[i], actionspace, done)
                         a['value'] = next_infoset.update_regret(player, reward, neg_p, discount, env)
                         
                         # the current node
@@ -228,14 +235,17 @@ class Infoset:
                         self.param[i]['regret'] += a['value'] - v_I
                         self.param[i]['regret'] *= discount
             else:
-                action = utils.sample_action(self.publicstate.actionspace, [a['strategy'] for a in self.param])
+                action = sample_action(self.publicstate.actionspace, [a['strategy'] for a in self.param])
                 next_state, _ = env.step(action)
                 # the next node
                 if env.is_over() == True:
                     reward = env.get_payoffs()[player]
                 else:
                     reward = 0
-                next_infoset = self.publicstate.search_infoset(next_state, action, env)
+                cards = encode_state_tree(next_state)
+                done = env.is_over()
+                actionspace = next_state.legal_actions
+                next_infoset = self.publicstate.search_infoset(cards, action, actionspace, done)
                 v_I = next_infoset.update_regret(player, reward, neg_p, discount, env)
                 # the current node
                 
@@ -254,14 +264,24 @@ class MCCFRAgent(Agent):
         
     def train(self):
         
-        self.load_agent(20200224)
-        #self.root.recur()
-        #return
+        self.load_agent(20200302)
+        
+        if os.path.isfile('poker_env/ToyPoker/data/abs_tree') == False:
+            abs_tree.generate('poker_env/ToyPoker/data/abs_tree')
+            print('generate done')
+            
+        
+        
+        #abs_tree.test()
+        
+        #print('test done')
+        
         for t in range(T):
             for p in range(self.env.player_num):
                 initial_state, _ = self.env.init_game()
-                self.root.actionspace =utils.get_actionspace(initial_state) # relunctant
-                initial_infoset = self.root._search_infoset(initial_state)
+                self.root.actionspace = initial_state.legal_actions # relunctant
+                cards = encode_state_tree(initial_state)
+                initial_infoset = self.root._search_infoset(cards)
                 
                 a = random.random()
                 if a < neg_p_prob:
@@ -275,9 +295,8 @@ class MCCFRAgent(Agent):
                 _ = initial_infoset.update_regret(p, 0, neg_p, discount, self.env)
                 if t % self.update_interval == 0:
                     initial_infoset.update_strategy(p, self.env)
-        #self.root.print_tree()
-        self.save_agent(20200224)
-        #print("The agent is saved.")
+
+        self.save_agent(20200302)
         
     def save_agent(self, index):
         
@@ -291,6 +310,7 @@ class MCCFRAgent(Agent):
         return
     
     def load_agent(self, index):
+    
         if os.path.isfile('policy_{}'.format(index)) == False:
             self.root = PublicState(0, [], False)
             return
@@ -300,8 +320,6 @@ class MCCFRAgent(Agent):
         self.root = pickle.load(file)
         ind_i = pickle.load(file)
         ind_p = pickle.load(file)
-        #print(ind_i)
-        #print(ind_p)
         file.close()        
         return
     
@@ -309,11 +327,12 @@ class MCCFRAgent(Agent):
         return
     
     def eval_step(self, state):
-        self.load_agent(20200224)
+    
+        self.load_agent(20200302)
         history = state.history
-        #card = utils.card_abstraction(state)
-        card = encode_state(state)
-        actionspace = utils.action_abstraction(state)
+        cards = encode_state_tree(state)
+        actionspace = state.legal_actions
+        actionspace_size = len(actionspace)
         ps = self.root
         strategy = []
         ps_flag = False
@@ -326,23 +345,23 @@ class MCCFRAgent(Agent):
                     break
             if ps_flag == False:
                 print("No matching publicstate.")
-                strategy = [1/len(actionspace)]*len(actionspace)
+                strategy = [1/actionspace_size]*actionspace_size
                 break
         if history == []:
             ps_flag = True
         if ps_flag == True:   
             for iset in ps.infoset:
-                if iset.card == card:
+                if iset.cards == cards:
                     strategy = [a['strategy'] for a in iset.param] # nontrivial strategy
                     iset_flag = True
                     break
             if iset_flag == False:
                 print("No matching infoset.")
-                strategy = [1/len(actionspace)]*len(actionspace)
+                strategy = [1/actionspace_size]*actionspace_size
         if actionspace != ps.actionspace:
-            print("Actionspaces are not matched.")
-            strategy = [1/len(actionspace)]*len(actionspace)
-        action = utils.sample_action(actionspace, strategy)
+            print("The actionspace is not matched.")
+            strategy = [1/actionspace_size]*actionspace_size
+        action = sample_action(actionspace, strategy)
         return action
         
 def encode_state(state):
@@ -357,13 +376,25 @@ def encode_state(state):
     '''
     global first_round_table
     global final_round_table
+    
     lossless_state = state.get_infoset()
     if len(state.public_cards) == 3:
-        cluster_label = first_round_table[first_round_table['cards_str'] == lossless_state]['label'].values[0]
+        cluster_label = first_round_table.loc[lossless_state]['label']
         lossy_state = 'first_{}'.format(cluster_label)
+        print(lossy_state)
     else:
-        # Calculate directly(√) / Read from table
-        cluster_label = final_round_table[final_round_table['cards_str'] == lossless_state]['label'].values[0]
+        # Calculate directly / Read from table(√)
         # cluster_label = int(calc_final_potential(state.hand_cards, state.public_cards) * 50)
+        cluster_label = final_round_table.loc[lossless_state]['label']
         lossy_state = 'final_{}'.format(cluster_label)
     return lossy_state
+            
+def encode_state_tree(state):
+
+    global c_root
+    lossless_state = state.get_infoset()
+    lossy_state = c_root.get_label(lossless_state)
+    return lossy_state
+    
+def sample_action(actionspace, distribution):
+    return np.random.choice(actionspace, size=1, p=distribution)[0]
