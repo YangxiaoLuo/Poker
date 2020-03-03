@@ -1,15 +1,16 @@
 import os
 import copy
 import random
-#import math
 import pickle
 
 import numpy as np
 import pandas as pd
 
+import poker_env.ToyPoker.data.abs_tree as abs_tree
+
+from poker_env.ToyPoker.data.sort_csv import cards_sort
 from poker_env.agents.base_agent import Agent
 from poker_env.ToyPoker.data.eval_potential import calc_final_potential
-import poker_env.ToyPoker.data.abs_tree as abs_tree
 
 # index of infoset
 ind_i = 1
@@ -24,6 +25,12 @@ T = 100
 #first_round_table = pd.read_csv('poker_env/ToyPoker/data/toypoker_first_ehs_vector.csv', index_col='cards_str', low_memory = False)
 #final_round_table = pd.read_csv('poker_env/ToyPoker/data/toypoker_final_ehs.csv', index_col='cards_str', low_memory = False)
 
+#first_round_table_sorted = pd.read_csv('poker_env/ToyPoker/data/toypoker_first_ehs_vector_sorted.csv', index_col='cards_str', low_memory = False)
+#final_round_table_sorted = pd.read_csv('poker_env/ToyPoker/data/toypoker_final_ehs_sorted.csv', index_col='cards_str', low_memory = False)
+
+if os.path.isfile('poker_env/ToyPoker/data/abs_tree') == False:
+    abs_tree.generate('poker_env/ToyPoker/data/abs_tree')
+    abs_tree.test()
 file = open('poker_env/ToyPoker/data/abs_tree', 'rb')
 c_root = pickle.load(file)
 
@@ -266,15 +273,7 @@ class MCCFRAgent(Agent):
         
         self.load_agent(20200302)
         
-        if os.path.isfile('poker_env/ToyPoker/data/abs_tree') == False:
-            abs_tree.generate('poker_env/ToyPoker/data/abs_tree')
-            print('generate done')
-            
         
-        
-        #abs_tree.test()
-        
-        #print('test done')
         
         for t in range(T):
             for p in range(self.env.player_num):
@@ -388,6 +387,69 @@ def encode_state(state):
         cluster_label = final_round_table.loc[lossless_state]['label']
         lossy_state = 'final_{}'.format(cluster_label)
     return lossy_state
+    
+def encode_state_arith(state):
+    
+    global first_round_table_sorted
+    global final_round_table_sorted
+    
+    lossless_state = state.get_infoset()
+    sorted_cards = cards_sort(lossless_state)
+    
+    n_cards = int(len(sorted_cards)/2)
+    
+    index_cards = [index_card(sorted_cards[2*i], sorted_cards[2*i+1]) for i in range(n_cards)]
+    print(index_cards)
+    
+    if len(state.public_cards) == 3:
+        row_ind = index_row_first(index_cards)
+        print(row_ind)
+        lossy_state = first_round_table_sorted['label'][row_ind]
+    else:
+        row_ind = index_row_final(index_cards)
+        print(row_ind)
+        lossy_state = final_round_table_sorted['label'][row_ind]
+        
+    return lossy_state
+    
+def index_card(rank, suit):
+
+    rank = int(rank)
+    if suit == 'c':
+        suit_ind = 0
+    elif suit == 'd':
+        suit_ind = 1
+    elif suit =='h':
+        suit_ind = 2
+    else:
+        suit_ind = 3
+    index = (rank-2)*4 + suit_ind
+    return index
+    
+def index_row_first(index_cards):
+    count = 0
+    for i0 in range(0, 20):
+        for i1 in range(i0+1, 21):
+            for i2 in range(i1+1, 22):
+                for i3 in range(i2+1, 23):
+                    for i4 in range(i3+1, 24):
+                        if [i0,i1,i2,i3,i4] == index_cards:
+                            return count
+                        count += 1
+
+def index_row_final(index_cards):
+    count = 0
+    for i0 in range(0, 18):
+        for i1 in range(i0+1, 19):
+            for i2 in range(i1+1, 20):
+                for i3 in range(i2+1, 21):
+                    for i4 in range(i3+1, 22):
+                        for i5 in range(i4+1, 23):
+                            for i6 in range(i5+1, 24):
+                                if [i0,i1,i2,i3,i4,i5,i6,i7] == index_cards:
+                                    return count
+                                count += 1
+
             
 def encode_state_tree(state):
 
