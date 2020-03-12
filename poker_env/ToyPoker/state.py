@@ -23,6 +23,7 @@ class PokerState:
         self.__history = []
         self.__hand_cards = []
         self.__public_cards = []
+        self.__raise_money = 0
 
     @property
     def num_player(self):
@@ -43,6 +44,21 @@ class PokerState:
         return self.__history
 
     @property
+    def previous_own_actions(self):
+        action_sequence = ''
+        for player_id, action, _, _ in self.__history:
+            if player_id == self.player_id:
+                action_sequence += action[0]
+        return action_sequence
+
+    @property
+    def previous_all_actions(self):
+        action_sequence = ''
+        for player_id, action, _, _ in self.__history:
+            action_sequence += action[0]
+        return action_sequence
+
+    @property
     def hand_cards(self):
         return self.__hand_cards
 
@@ -55,18 +71,23 @@ class PokerState:
         return self.__pot
 
     @property
+    def raise_money(self):
+        return self.__raise_money
+
+    @property
     def lossless_cards(self):
         return PokerState.get_suit_normalization(self.hand_cards, self.public_cards)
 
-    def move(self, player_id, action):
-        self.__history.append((player_id, action))
+    def move(self, player_id, action, pot, round_counter):
+        self.__history.append((player_id, action, sum(pot) - pot[player_id], round_counter))
 
-    def set_state(self, player_id, hand_cards, public_cards, legal_actions, pot):
+    def set_state(self, player_id, hand_cards, public_cards, legal_actions, pot, raise_money):
         self.__player_id = player_id
         self.__hand_cards = hand_cards
         self.__public_cards = public_cards
         self.__legal_actions = legal_actions
         self.__pot = pot
+        self.__raise_money = raise_money
 
     def get_infoset(self):
         '''
@@ -77,12 +98,6 @@ class PokerState:
         '''
         normalized_cards = PokerState.get_suit_normalization(self.hand_cards, self.public_cards)
         infoset_str = ''.join(normalized_cards)
-        # FIXME: if action sequence need to be add into infoset string?
-        # infoset_str = ''.join(normalized_cards) + '|'
-        # for player_id, action in self.history:
-        #     if isinstance(action, str):
-        #         infoset_str += action[0]
-
         return infoset_str
 
     def need_action_abstraction(self):

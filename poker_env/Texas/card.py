@@ -6,7 +6,7 @@ class LookUpStr(Enum):
     A Enum that contains all strings of order for looking up
     '''
 
-    RANK = "23456789TJKQA"
+    RANK = "23456789TJQKA"
     SUIT = "scdh"
 
     def __init__(self, string):

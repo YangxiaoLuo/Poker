@@ -7,17 +7,18 @@ class ToyPokerRound:
     The Round class for Toy Poker.
     Round can call other Classes' functions to keep the game running.
     '''
-    def __init__(self, num_players=2, init_raise_amount=2):
+    def __init__(self, num_players=2, big_blind=2):
         '''
         Initialize a round class.
 
         Args:
             num_players (int): The number of players
-            init_raise_amount (int): The min raise amount when every round starts
+            big_blind (int): The big blind of the current game.
         '''
         self.game_pointer = None
+        self.round_index = 0
         self.num_players = num_players
-        self.init_raise_amount = init_raise_amount
+        self.big_blind = big_blind
 
         # If each player agree to not raise, the round is over.
         self.not_raise_num = 0
@@ -29,9 +30,22 @@ class ToyPokerRound:
         # Raised amount for each player
         self.raised = [0 for _ in range(self.num_players)]
 
-    def start_new_round(self, game_pointer, raised=None):
+    @property
+    def allow_raise_again(self):
+        return self.raise_times < 2
+
+    @property
+    def once_raise_amount(self):
+        # In the first round: equals to big blind
+        # In the final round: equals to 2 big blind
+        if self.round_index == 1:
+            return self.big_blind
+        else:
+            return 2 * self.big_blind
+
+    def start_new_round(self, game_pointer, round_index, raised=None):
         '''
-        Start a new bidding round
+        Start a new betting round
 
         Args:
             game_pointer (int): The index of the current player.
@@ -40,7 +54,9 @@ class ToyPokerRound:
         Note: For the first round of the game, we need to setup the big/small blind
         '''
         self.game_pointer = game_pointer
+        self.round_index = round_index
         self.not_raise_num = 0
+        self.raise_times = 0
         if raised:
             self.raised = raised
         else:
@@ -59,7 +75,7 @@ class ToyPokerRound:
         '''
         if action == Action.RAISE.value:
             call_amount = max(self.raised) - self.raised[self.game_pointer]
-            rebet_amount = call_amount + self.init_raise_amount
+            rebet_amount = call_amount + self.once_raise_amount
             self.raised[self.game_pointer] += rebet_amount
             players[self.game_pointer].in_chips += rebet_amount
             self.not_raise_num = 1
@@ -111,7 +127,7 @@ class ToyPokerRound:
         call_amount = max(self.raised) - self.raised[self.game_pointer]
         remained_chips = players[self.game_pointer].get_remained_chips()
 
-        if self.raise_times < 2:
+        if self.allow_raise_again:
             full_actions.append(Action.RAISE.value)
 
         # If the current player has put in the chips that are more than others, he can check.
@@ -140,15 +156,9 @@ class ToyPokerRound:
         else:
             return False
 
-    def get_action_player_num(self):
-        '''
-        Return the number of players who can action
-
-        Returns:
-            (int): the result number
-        '''
-        return self.alive_player_num - self.alive_player_num
-
+    def get_raise_money(self):
+        call_amount = max(self.raised) - self.raised[self.game_pointer]
+        return call_amount + self.once_raise_amount
 
 # # test
 # import numpy as np
@@ -167,7 +177,7 @@ class ToyPokerRound:
 #     players[b].in_chips = big_blind
 
 #     game_pointer = 1
-#     r = ToyPokerRound(num_players=num_players, init_raise_amount=big_blind)
+#     r = ToyPokerRound(num_players=num_players, big_blind=big_blind)
 #     r.start_new_round(game_pointer=game_pointer, raised=[p.in_chips for p in players])
 
 #     r.proceed_round(players, Action.CALL.value)

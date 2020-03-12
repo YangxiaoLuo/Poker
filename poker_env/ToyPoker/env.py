@@ -1,7 +1,8 @@
 import numpy as np
 import random
-
+from copy import deepcopy
 from poker_env.ToyPoker.game import ToyPokerGame as Game
+from poker_env.ToyPoker.action import Action
 from poker_env.agents.base_agent import Agent
 
 
@@ -56,7 +57,7 @@ class ToyPokerEnv:
         #     if isinstance(agent, Agent):
         #         print("id_{}:{}".format(i, agent.agent_type))
 
-    def init_game(self):
+    def init_game(self, button=None):
         '''
         Start a new game
 
@@ -65,7 +66,7 @@ class ToyPokerEnv:
                 (PokerState): The begining state of the game
                 (int): The begining player
         '''
-        state, player_id = self.__game.init_game()
+        state, player_id = self.__game.init_game(button=button)
         return state, player_id
 
     def step(self, action):
@@ -130,7 +131,7 @@ class ToyPokerEnv:
         if len(self.__agents) != self.__player_num:
             raise ValueError("Agents number should be equal to the player number")
 
-    def run(self, is_training=False, seed=None):
+    def run(self, is_training=False, button=None, seed=None):
         '''
         Run a complete game, either for evaluation or training RL agent.
 
@@ -148,17 +149,19 @@ class ToyPokerEnv:
             random.seed(seed)
 
         trajectories = [[] for _ in range(self.player_num)]
-        state, player_id = self.init_game()
+        state, player_id = self.init_game(button=button)
 
         # Loop to play the game
         while not self.is_over():
             # Save state
-            trajectories[player_id].append(state)
+            trajectories[player_id].append(deepcopy(state))
             # Agent plays
             if not is_training:
                 action = self.__agents[player_id].eval_step(state)
             else:
                 action = self.__agents[player_id].step(state)
+            if action not in self.action_space:
+                raise ValueError("Undefined action!")
             if self._has_human_agent:
                 if self.__agents[player_id].agent_type == 'HumanAgent':
                     print("Human Player{} Choose {}".format(player_id, action))
@@ -220,7 +223,9 @@ class ToyPokerEnv:
         Returns:
             (list): each element (str) represent a possible action
         '''
-        action_space = ['fold', 'check', 'call', 'raise']
+        action_space = []
+        for action in Action:
+            action_space.append(action.value)
         return action_space
 
     def get_game_tree(self):
@@ -228,3 +233,12 @@ class ToyPokerEnv:
         Return the action sequence of the game
         '''
         return self.__game.game_tree
+
+    def get_game_history(self):
+        '''
+        Return the history of the game
+        '''
+        return self.__game.history
+
+    # def get_raise_money(self):
+    #     return self.__game.round.get_raise_money()

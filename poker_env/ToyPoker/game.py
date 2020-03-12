@@ -92,7 +92,9 @@ class ToyPokerGame:
             self.public_cards.append(self.dealer.deal_card())
         # deal_cards = [card.get_index() for card in self.public_cards]
         # self.game_tree.deal_card('c', deal_cards)
-        self.round.start_new_round(game_pointer=self.game_pointer, raised=[p.in_chips for p in self.players])
+        self.round.start_new_round(game_pointer=self.game_pointer,
+                                   round_index=self.round_counter,
+                                   raised=[p.in_chips for p in self.players])
         state = self.get_state()
         return state, self.game_pointer
 
@@ -101,7 +103,7 @@ class ToyPokerGame:
         Get the next state
 
         Args:
-            action (str or int): a specific action. (call, fold, check or raise(int))
+            action (str): a specific action. (call, fold, check or raise)
 
         Ruturns:
             (tuple): Tuple containing:
@@ -119,7 +121,7 @@ class ToyPokerGame:
             tr = deepcopy(self.game_tree)
             self.history.append((r, b, r_c, d, p, ps, tr))
         # Save the action and move game tree
-        self.game_tree.move(self.game_pointer, action)
+        self.game_tree.move(self.game_pointer, action, self.game_tree.pot, self.round_counter)
 
         # Then proceed the action and get to the next state
         self.game_pointer = self.round.proceed_round(self.players, action)
@@ -140,7 +142,9 @@ class ToyPokerGame:
             players_status = [player.status for player in self.players]
             while players_status[self.game_pointer] != 'alive':
                 self.game_pointer = (self.game_pointer + 1) % self.num_players
-            self.round.start_new_round(self.game_pointer, raised=self.round.raised)
+            self.round.start_new_round(game_pointer=self.game_pointer,
+                                       round_index=self.round_counter,
+                                       raised=self.round.raised)
             # self.show_hint_info()
 
         state = self.get_state()
@@ -215,7 +219,8 @@ class ToyPokerGame:
                                  hand_cards=[card.get_index() for card in self.players[self.round.game_pointer].hand],
                                  public_cards=[card.get_index() for card in self.public_cards],
                                  legal_actions=self.get_legal_actions(),
-                                 pot=[p.in_chips for p in self.players])
+                                 pot=[p.in_chips for p in self.players],
+                                 raise_money=self.round.get_raise_money())
         return self.game_tree
 
     def get_legal_actions(self):

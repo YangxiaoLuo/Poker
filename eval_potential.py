@@ -1,7 +1,6 @@
 import sys
 import time
-#from poker_env.ToyPoker.data.eval_potential import sample_data
-from poker_env.Texas.data.eval_potential import sample_data
+from poker_env.ToyPoker.data.eval_potential import sample_data
 
 if __name__ == "__main__":
 

@@ -1,6 +1,6 @@
 import numpy as np
 import random
-
+from copy import deepcopy
 from poker_env.Texas.game import NoLimitTexasHoldemGame as Game
 from poker_env.agents.base_agent import Agent
 
@@ -153,12 +153,14 @@ class NoLimitTexasHoldemEnv:
         # Loop to play the game
         while not self.is_over():
             # Save state
-            trajectories[player_id].append(state)
+            trajectories[player_id].append(deepcopy(state))
             # Agent plays
             if not is_training:
                 action = self.__agents[player_id].eval_step(state)
             else:
                 action = self.__agents[player_id].step(state)
+            if action not in self.action_space:
+                raise ValueError("Undefined action!")
             if self._has_human_agent:
                 if self.__agents[player_id].agent_type == 'HumanAgent':
                     print("Human Player{} Choose {}".format(player_id, action))

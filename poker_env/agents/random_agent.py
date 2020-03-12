@@ -85,4 +85,3 @@ class CallAgent(Agent):
             action (str): the call action
         '''
         return self.step(state)
-

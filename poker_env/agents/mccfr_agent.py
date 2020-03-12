@@ -1,9 +1,9 @@
 import numpy as np
-import pandas as pd
 import collections
+import pickle
 from poker_env.agents.base_agent import Agent
 from poker_env.ToyPoker.env import ToyPokerEnv as Env
-from poker_env.ToyPoker.data.eval_potential import calc_final_potential
+import poker_env.ToyPoker.data.abs_tree
 
 
 class ToyPokerMCCFRAgent(Agent):
@@ -13,12 +13,18 @@ class ToyPokerMCCFRAgent(Agent):
     Attributes:
         iterations (int): the number of iterations in training
     '''
-    def __init__(self, env, update_interval=100, discount_interval=1000):
+    def __init__(self, env, update_interval=100, discount_interval=1000, infoset_mode='no_action'):
         '''
         Initialize the random agent
 
         Args:
             env (Env): Env instance for training agent
+            update_interval (int): intervals of policy updating
+            discount_interval (int): intervals of regret discount
+            infoset_mode (string): decide how to generate infoset of the game:
+                'no_action' means infoset contains only cards infomation without action history;
+                'own_action' means infoset contains additionally current player's previous actions;
+                'all_action' means infoset contains additionally all obvious action history.
         '''
         super().__init__(agent_type='MCCFRAgent')
         if isinstance(env, Env):
@@ -31,10 +37,8 @@ class ToyPokerMCCFRAgent(Agent):
         self.iterations = 0
         self.update_interval = update_interval
         self.discount_interval = discount_interval
-
-        # state abstraction result
-        self.first_round_table = pd.read_csv('poker_env/ToyPoker/data/toypoker_first_ehs_vector.csv', index_col=None)
-        self.final_round_table = pd.read_csv('poker_env/ToyPoker/data/toypoker_final_ehs.csv', index_col=None)
+        self.infoset_mode = infoset_mode
+        self.abs_tree = pickle.load(open('poker_env/ToyPoker/data/abs_tree', 'rb'))
 
     @property
     def action_num(self):
@@ -196,16 +200,19 @@ class ToyPokerMCCFRAgent(Agent):
             (string): infoset keys.
         '''
         lossless_state = state.get_infoset()
+        cluster_label = self.abs_tree.get_label(lossless_state)
         if len(state.public_cards) == 3:
-            cluster_label = self.first_round_table[self.first_round_table['cards_str'] == lossless_state]['label'].values[0]
             lossy_state = 'first_{}'.format(cluster_label)
         else:
-            # Calculate directly(√) / Read from table
-            # cluster_label = self.final_round_table[self.final_round_table['cards_str'] == lossless_state]['label'].values[0]
-            cluster_label = int(calc_final_potential(state.hand_cards, state.public_cards) * 50)
             lossy_state = 'final_{}'.format(cluster_label)
-        print(lossy_state)
-        return lossy_state
+        if self.infoset_mode == 'no_action':
+            return lossy_state
+        elif self.infoset_mode == 'own_action':
+            return lossy_state + '/' + state.previous_own_actions
+        elif self.infoset_mode == 'all_action':
+            return lossy_state + '/' + state.previous_all_actions
+        else:
+            raise ValueError("Not valid infoset_mode!")
 
     def encode_action(self, state):
         '''
@@ -245,7 +252,7 @@ class ToyPokerMCCFRAgent(Agent):
             action (str): random action based on the action probability vector
         '''
         action_probs = self.calculate_strategy(
-            info_set=state.get_info_set(),
+            info_set=self.encode_state(state),
             legal_actions=self.encode_action(state)
         )
         action = np.random.choice(len(action_probs), p=action_probs)
